@@ -1,0 +1,6 @@
+whisper:
+  model: large # tiny, base, small, medium, large
+
+video:
+  path: test.mp4
+  y_pos: 0.75
