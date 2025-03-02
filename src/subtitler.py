@@ -10,7 +10,7 @@ class Subtitler:
 
     @staticmethod 
     def load_config():
-        with open('config.yaml', 'r') as file:
+        with open('assets/config.yaml', 'r') as file:
             return yaml.safe_load(file)
 
     def generate_subtitles(self, video_path):
