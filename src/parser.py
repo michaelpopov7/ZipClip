@@ -76,7 +76,7 @@ def extract_clips(video_path, min_duration, max_duration, target_clips):
     video = VideoFileClip(video_path)
     duration = video.duration
     print(f"Video duration: {duration:.1f} seconds")
-    chunk_size = 5  # Analyze in 5-second chunks
+    chunk_size = 30  # Analyze in 5-second chunks
     segments = []
 
     # Temporary audio file for analysis
@@ -113,7 +113,7 @@ def extract_clips(video_path, min_duration, max_duration, target_clips):
     for idx, (start, end) in enumerate(clips):
         print(f"Exporting clip {idx+1}/{len(clips)} ({start:.1f}s - {end:.1f}s)...")
         clip = video.subclip(start, end)
-        output_path = f"clip_{idx+1}.mp4"
+        output_path = f"assets/results/clips/clip_{idx+1}.mp4"
         clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
         output_clips.append(output_path)
     
