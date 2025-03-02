@@ -1,7 +1,7 @@
 import cv2
 import librosa
 import numpy as np
-from moviepy.editor import VideoFileClip, concatenate_videoclips
+from moviepy.editor import VideoFileClip
 import whisper
 from pathlib import Path
 import os
@@ -9,7 +9,6 @@ import sys
 
 def analyze_audio_segment(audio_path):
     print(f"Analyzing audio segment from {audio_path}...")
-    # Load audio and extract features
     y, sr = librosa.load(audio_path)
     energy = librosa.feature.rms(y=y).mean()
     print(f"Extracted audio energy: {energy:.4f}")
@@ -20,7 +19,6 @@ def analyze_audio_segment(audio_path):
     except Exception as e:
         print(f"Error loading Whisper model: {e}")
         sys.exit(1)
-        
     try:
         result = model.transcribe(audio_path)
         text = result["text"]
@@ -29,7 +27,6 @@ def analyze_audio_segment(audio_path):
     except Exception as e:
         print(f"Error during transcription: {e}")
         word_count = 0
-    
     return energy, word_count
 
 def analyze_video_segment(start, end, video_path):
@@ -55,16 +52,10 @@ def analyze_video_segment(start, end, video_path):
 
 def score_segment(start, end, video_path, temp_audio_path):
     print(f"\nScoring segment {start:.1f}s - {end:.1f}s")
-    # Extract audio for this segment
     video = VideoFileClip(video_path).subclip(start, end)
     video.audio.write_audiofile(temp_audio_path, verbose=False, logger=None)
-    
-    # Analyze audio
     energy, word_count = analyze_audio_segment(temp_audio_path)
-    # Analyze video
     motion = analyze_video_segment(start, end, video_path)
-    
-    # Combine into an "interestingness" score (weights are arbitrary, tune them!)
     score = (0.4 * energy) + (0.3 * motion) + (0.3 * word_count)
     print(f"Final segment score: {score:.4f}")
     return score
@@ -76,49 +67,82 @@ def extract_clips(video_path, min_duration, max_duration, target_clips):
     video = VideoFileClip(video_path)
     duration = video.duration
     print(f"Video duration: {duration:.1f} seconds")
-    chunk_size = 30  # Analyze in 5-second chunks
+    chunk_size = 5  # Analyze in smaller 5-second chunks for granularity
     segments = []
-
-    # Temporary audio file for analysis
     temp_audio = "assets/extras/temp_audio.wav"
 
     print("\nScoring all segments...")
-    # Score all segments
+    # Score all small segments
     for start in np.arange(0, duration, chunk_size):
         end = min(start + chunk_size, duration)
         score = score_segment(start, end, video_path, temp_audio)
         segments.append((start, end, score))
 
-    print("\nSelecting top segments...")
-    # Sort by score and pick top segments
+    # Sort by score
     segments.sort(key=lambda x: x[2], reverse=True)
-    top_segments = segments[:target_clips * 2]  # Overshoot to allow merging
 
-    print("\nMerging segments to meet duration constraints...")
-    # Merge adjacent segments to meet duration constraints
+    print("\nBuilding variable-length clips...")
     clips = []
-    i = 0
-    while i < len(top_segments) and len(clips) < target_clips:
-        start, end, _ = top_segments[i]
-        while (end - start < min_duration) and (i + 1 < len(top_segments)):
-            i += 1
-            end = top_segments[i][1]  # Extend to next segment
-        if min_duration <= (end - start) <= max_duration:
+    used_times = set()  # Track used time ranges to avoid overlap
+    score_threshold = np.mean([s[2] for s in segments])  # Dynamic threshold for "interesting"
+
+    for seed_start, seed_end, seed_score in segments:
+        if len(clips) >= target_clips:
+            break
+        # Skip if this seed overlaps with an existing clip
+        if any(seed_start < e and seed_end > s for s, e in clips):
+            continue
+
+        # Expand from seed
+        start = seed_start
+        end = seed_end
+        current_duration = end - start
+        current_score = seed_score
+
+        # Expand forward
+        next_idx = segments.index((seed_start, seed_end, seed_score)) + 1
+        while (current_duration < max_duration and 
+               next_idx < len(segments) and 
+               segments[next_idx][0] == end and 
+               segments[next_idx][2] >= score_threshold):
+            new_end = segments[next_idx][1]
+            if any(start < e and new_end > s for s, e in clips):  # Check overlap
+                break
+            end = new_end
+            current_duration = end - start
+            current_score = (current_score + segments[next_idx][2]) / 2  # Average score
+            next_idx += 1
+
+        # Expand backward
+        prev_idx = segments.index((seed_start, seed_end, seed_score)) - 1
+        while (current_duration < max_duration and 
+               prev_idx >= 0 and 
+               segments[prev_idx][1] == start and 
+               segments[prev_idx][2] >= score_threshold):
+            new_start = segments[prev_idx][0]
+            if any(new_start < e and end > s for s, e in clips):  # Check overlap
+                break
+            start = new_start
+            current_duration = end - start
+            current_score = (current_score + segments[prev_idx][2]) / 2
+            prev_idx -= 1
+
+        # Only add if it meets min_duration
+        if min_duration <= current_duration <= max_duration:
             clips.append((start, end))
-        i += 1
+            print(f"Added clip: {start:.1f}s - {end:.1f}s (duration: {current_duration:.1f}s, score: {current_score:.4f})")
 
     print("\nExporting final clips...")
-    # Export clips
     output_clips = []
+    os.makedirs("assets/results/clips", exist_ok=True)
     for idx, (start, end) in enumerate(clips):
         print(f"Exporting clip {idx+1}/{len(clips)} ({start:.1f}s - {end:.1f}s)...")
         clip = video.subclip(start, end)
         output_path = f"assets/results/clips/clip_{idx+1}.mp4"
-        clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
+        clip.write_videofile(output_path, codec="libx264", audio_codec="aac", verbose=False, logger=None)
         output_clips.append(output_path)
     
     print("\nCleaning up temporary files...")
-    # Clean up
     Path(temp_audio).unlink(missing_ok=True)
     video.close()
     print("Extraction complete!")
@@ -128,8 +152,7 @@ def extract_clips(video_path, min_duration, max_duration, target_clips):
 video_path = "assets/videos/ski.mp4"
 if not os.path.exists(video_path):
     print(f"Error: video path does not exist: {video_path}")
-    exit(1)
-
+    sys.exit(1)
 
 min_duration = 15  # seconds
 max_duration = 45  # seconds
