@@ -262,7 +262,8 @@ class VideoClipExtractor:
         
         logger.info(f"Analyzing approximately {frame_count // sample_rate} frames...")
         
-        interest_scores = np.zeros(frame_count)
+        # Make array one element larger to handle potential rounding issues at the end
+        interest_scores = np.zeros(frame_count + 1)
         prev_frame = None
         
         # Process video frames
@@ -270,38 +271,52 @@ class VideoClipExtractor:
             if i % sample_rate != 0 and i < frame_count - 1:
                 continue
                 
-            frame = video.get_frame(frame_time)
-            
-            # Calculate various interest metrics
-            if self.model is not None and self.feature_extractor is not None:
-                # Use AI model for more advanced analysis
-                try:
-                    # Convert frame to RGB and resize
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    inputs = self.feature_extractor(images=frame_rgb, return_tensors="pt").to(self.device)
-                    
-                    # Get model outputs
-                    with torch.no_grad():
-                        outputs = self.model(**inputs)
-                    
-                    # Use logits variance as a measure of "interestingness"
-                    # Higher variance suggests the model is more confident about the content
-                    logits_variance = outputs.logits.var().item()
-                    
-                    interest_scores[i] = logits_variance
-                except Exception as e:
-                    logger.warning(f"Error in AI analysis for frame at {frame_time:.2f}s: {e}")
-                    # Fall back to OpenCV analysis
+            # Safety check to prevent index out of bounds
+            if i >= len(interest_scores):
+                logger.warning(f"Frame index {i} exceeds allocated array size {len(interest_scores)}. Skipping.")
+                continue
+                
+            try:
+                frame = video.get_frame(frame_time)
+                
+                # Calculate various interest metrics
+                if self.model is not None and self.feature_extractor is not None:
+                    # Use AI model for more advanced analysis
+                    try:
+                        # Convert frame to RGB and resize
+                        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        inputs = self.feature_extractor(images=frame_rgb, return_tensors="pt").to(self.device)
+                        
+                        # Get model outputs
+                        with torch.no_grad():
+                            outputs = self.model(**inputs)
+                        
+                        # Use logits variance as a measure of "interestingness"
+                        # Higher variance suggests the model is more confident about the content
+                        logits_variance = outputs.logits.var().item()
+                        
+                        interest_scores[i] = logits_variance
+                    except Exception as e:
+                        logger.warning(f"Error in AI analysis for frame at {frame_time:.2f}s: {e}")
+                        # Fall back to OpenCV analysis
+                        interest_scores[i] = self._calculate_opencv_interest(frame, prev_frame)
+                else:
+                    # Use OpenCV-based analysis
                     interest_scores[i] = self._calculate_opencv_interest(frame, prev_frame)
-            else:
-                # Use OpenCV-based analysis
-                interest_scores[i] = self._calculate_opencv_interest(frame, prev_frame)
-            
-            prev_frame = frame
-            
+                
+                prev_frame = frame
+            except Exception as e:
+                logger.warning(f"Error processing frame at {frame_time:.2f}s: {e}")
+                # Use previous score or zero if no previous score
+                if i > 0:
+                    interest_scores[i] = interest_scores[i-1]
+                
             # Show progress periodically
             if i % (10 * sample_rate) == 0:
                 logger.info(f"Analysis progress: {i/frame_count*100:.1f}%")
+        
+        # Trim array to actual used size
+        interest_scores = interest_scores[:frame_count]
         
         # Normalize scores
         if interest_scores.max() > interest_scores.min():
@@ -313,7 +328,7 @@ class VideoClipExtractor:
         smoothed_scores = np.convolve(interest_scores, kernel, mode='same')
         
         return smoothed_scores
-    
+
     def _calculate_opencv_interest(self, frame, prev_frame):
         """
         Calculate interesting metrics using OpenCV.
@@ -365,8 +380,8 @@ def main():
     parser = argparse.ArgumentParser(description="Extract interesting clips from a video")
     parser.add_argument("--video_path", type=str, help="Path to the input video file")
     parser.add_argument("--min_duration", type=float, default=3.0, help="Minimum clip duration in seconds")
-    parser.add_argument("--max_duration", type=float, default=10.0, help="Maximum clip duration in seconds")
-    parser.add_argument("--target_clips", type=int, default=5, help="Target number of clips to extract")
+    parser.add_argument("--max_duration", type=float, default=45.0, help="Maximum clip duration in seconds")
+    parser.add_argument("--target_clips", type=int, default=20, help="Target number of clips to extract")
     parser.add_argument("--output_dir", type=str, default="extracted_clips", help="Directory to save extracted clips")
     
     args = parser.parse_args()
