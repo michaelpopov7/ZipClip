@@ -172,3 +172,5 @@ cython_debug/
 results/
 extracted_clips
 .DS_store
+
+videos

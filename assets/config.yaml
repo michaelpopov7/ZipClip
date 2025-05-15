@@ -1,11 +1,12 @@
 whisper:
   model: large # tiny, base, small, medium, large
 
-video:
-  path: transformed/new.mp4
-  y_pos: 0.75
+number_of_clips: 20
+target_duration: 35
 
 channels:
-  family_guy:
-    path: https://www.youtube.com/watch?v=6DmXlJwaP0I
+  # family_guy:
+  #   path: https://www.youtube.com/watch?v=6DmXlJwaP0I
+  outdoor_boys:
+    path: https://www.youtube.com/watch?v=uSuEdw6HAFE
   
