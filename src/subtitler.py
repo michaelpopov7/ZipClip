@@ -43,9 +43,9 @@ class Subtitler:
         subtitle_clips = []
         for sub in subtitles:
             txt_clip = (TextClip(sub["text"], 
-                    fontsize=100, 
+                    fontsize=50, 
                     color='white',
-                    font='Arial-Bold',
+                    font='Arial-Bold-Italic',
                     stroke_color='black',
                     stroke_width=1,
                     size=(max_text_width, None),

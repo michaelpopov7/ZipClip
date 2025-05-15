@@ -2,5 +2,10 @@ whisper:
   model: large # tiny, base, small, medium, large
 
 video:
-  path: test.mp4
+  path: transformed/new.mp4
   y_pos: 0.75
+
+channels:
+  family_guy:
+    path: https://www.youtube.com/watch?v=6DmXlJwaP0I
+  
