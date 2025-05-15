@@ -100,3 +100,5 @@ videos/
 ```
 
 All intermediate processing files are automatically cleaned up.
+
+pip3 install --upgrade yt-dlp
