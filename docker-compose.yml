@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  zipclip:
+    build: .
+    container_name: zipclip-app
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persist uploads, outputs, and config
+      - ./uploads:/app/uploads
+      - ./output:/app/output
+      - ./assets:/app/assets
+      # Optional: Mount for local development
+      - ./src:/app/src
+    environment:
+      - FLASK_ENV=production
+      - FLASK_DEBUG=false
+      # Optional: Set OpenAI API key
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Ollama service for local LLM support
+  ollama:
+    image: ollama/ollama:latest
+    container_name: zipclip-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+    # Uncomment if you have GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  ollama_data:
+    driver: local
+
+networks:
+  default:
+    name: zipclip-network

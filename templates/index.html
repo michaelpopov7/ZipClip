@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZipClip - AI-Powered Video Clip Extraction</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .main-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+
+        .upload-section {
+            padding: 40px;
+            text-align: center;
+        }
+
+        .upload-zone {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 60px 20px;
+            margin-bottom: 30px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: #f8f9ff;
+        }
+
+        .upload-zone:hover {
+            border-color: #5a67d8;
+            background: #f0f4ff;
+            transform: translateY(-2px);
+        }
+
+        .upload-zone.dragover {
+            border-color: #4c51bf;
+            background: #e6fffa;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 4rem;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .upload-text {
+            font-size: 1.3rem;
+            color: #4a5568;
+            margin-bottom: 10px;
+        }
+
+        .upload-subtext {
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-control[type="number"] {
+            width: 120px;
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            height: 100px;
+        }
+
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .progress-section {
+            display: none;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .progress-text {
+            font-size: 1.1rem;
+            color: #4a5568;
+            margin-bottom: 10px;
+        }
+
+        .progress-details {
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        .results-section {
+            display: none;
+            padding: 40px;
+        }
+
+        .results-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .results-header h2 {
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+
+        .clips-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .clip-card {
+            background: #f7fafc;
+            border-radius: 15px;
+            padding: 20px;
+            border: 2px solid #e2e8f0;
+            transition: all 0.3s ease;
+        }
+
+        .clip-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border-color: #667eea;
+        }
+
+        .clip-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .clip-number {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .clip-duration {
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        .clip-reason {
+            color: #4a5568;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
+        .clip-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 2px solid #667eea;
+            color: #667eea;
+        }
+
+        .btn-outline:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .error-message {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .success-message {
+            background: #c6f6d5;
+            color: #2f855a;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .upload-section {
+                padding: 20px;
+            }
+            
+            .upload-zone {
+                padding: 40px 15px;
+            }
+            
+            .clips-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-video"></i> ZipClip</h1>
+            <p>Transform long videos into engaging short clips with AI</p>
+        </div>
+
+        <div class="main-card">
+            <!-- Upload Section -->
+            <div class="upload-section" id="uploadSection">
+                <div class="upload-zone" id="uploadZone">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <div class="upload-text">Drop your video here or click to browse</div>
+                    <div class="upload-subtext">Supports MP4, AVI, MOV, MKV, WebM, M4V (max 500MB)</div>
+                </div>
+
+                <input type="file" id="videoInput" accept="video/*" style="display: none;">
+
+                <form id="uploadForm">
+                    <div class="form-group">
+                        <label for="promptInput">What makes a clip interesting?</label>
+                        <textarea id="promptInput" class="form-control" placeholder="Describe what you're looking for... e.g., 'funny moments', 'key insights', 'action scenes', 'emotional reactions'" required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="numClipsInput">Number of clips to extract</label>
+                        <input type="number" id="numClipsInput" class="form-control" min="1" max="20" value="5">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" id="processBtn">
+                        <i class="fas fa-magic"></i>
+                        Process Video
+                    </button>
+                </form>
+
+                <div class="error-message" id="errorMessage"></div>
+                <div class="success-message" id="successMessage"></div>
+            </div>
+
+            <!-- Progress Section -->
+            <div class="progress-section" id="progressSection">
+                <div class="spinner"></div>
+                <div class="progress-text" id="progressText">Processing your video...</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-details" id="progressDetails">Initializing...</div>
+            </div>
+
+            <!-- Results Section -->
+            <div class="results-section" id="resultsSection">
+                <div class="results-header">
+                    <h2><i class="fas fa-sparkles"></i> Your Clips Are Ready!</h2>
+                    <p>AI has extracted the most interesting moments from your video</p>
+                </div>
+                <div class="clips-grid" id="clipsGrid">
+                    <!-- Clips will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentJobId = null;
+        let progressInterval = null;
+
+        // DOM elements
+        const uploadZone = document.getElementById('uploadZone');
+        const videoInput = document.getElementById('videoInput');
+        const uploadForm = document.getElementById('uploadForm');
+        const promptInput = document.getElementById('promptInput');
+        const numClipsInput = document.getElementById('numClipsInput');
+        const processBtn = document.getElementById('processBtn');
+        const errorMessage = document.getElementById('errorMessage');
+        const successMessage = document.getElementById('successMessage');
+        
+        const uploadSection = document.getElementById('uploadSection');
+        const progressSection = document.getElementById('progressSection');
+        const resultsSection = document.getElementById('resultsSection');
+        
+        const progressText = document.getElementById('progressText');
+        const progressFill = document.getElementById('progressFill');
+        const progressDetails = document.getElementById('progressDetails');
+        const clipsGrid = document.getElementById('clipsGrid');
+
+        // File upload handling
+        uploadZone.addEventListener('click', () => videoInput.click());
+        uploadZone.addEventListener('dragover', handleDragOver);
+        uploadZone.addEventListener('dragleave', handleDragLeave);
+        uploadZone.addEventListener('drop', handleDrop);
+        videoInput.addEventListener('change', handleFileSelect);
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                videoInput.files = files;
+                updateUploadDisplay(files[0]);
+            }
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                updateUploadDisplay(file);
+            }
+        }
+
+        function updateUploadDisplay(file) {
+            const uploadText = uploadZone.querySelector('.upload-text');
+            const uploadIcon = uploadZone.querySelector('.upload-icon i');
+            
+            uploadText.textContent = `Selected: ${file.name}`;
+            uploadIcon.className = 'fas fa-check-circle';
+            uploadZone.style.borderColor = '#48bb78';
+            uploadZone.style.background = '#f0fff4';
+        }
+
+        // Form submission
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const file = videoInput.files[0];
+            if (!file) {
+                showError('Please select a video file');
+                return;
+            }
+            
+            const prompt = promptInput.value.trim();
+            if (!prompt) {
+                showError('Please describe what makes a clip interesting');
+                return;
+            }
+            
+            const numClips = parseInt(numClipsInput.value);
+            if (numClips < 1 || numClips > 20) {
+                showError('Number of clips must be between 1 and 20');
+                return;
+            }
+            
+            await uploadAndProcess(file, prompt, numClips);
+        });
+
+        async function uploadAndProcess(file, prompt, numClips) {
+            try {
+                hideMessages();
+                processBtn.disabled = true;
+                processBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+                
+                const formData = new FormData();
+                formData.append('video', file);
+                formData.append('prompt', prompt);
+                formData.append('num_clips', numClips);
+                
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentJobId = result.job_id;
+                    showProgress();
+                    startProgressTracking();
+                } else {
+                    showError(result.error || 'Upload failed');
+                    resetUploadButton();
+                }
+                
+            } catch (error) {
+                console.error('Upload error:', error);
+                showError('Failed to upload video. Please try again.');
+                resetUploadButton();
+            }
+        }
+
+        function showProgress() {
+            uploadSection.style.display = 'none';
+            progressSection.style.display = 'block';
+            resultsSection.style.display = 'none';
+        }
+
+        function showResults() {
+            uploadSection.style.display = 'none';
+            progressSection.style.display = 'none';
+            resultsSection.style.display = 'block';
+        }
+
+        function resetToUpload() {
+            uploadSection.style.display = 'block';
+            progressSection.style.display = 'none';
+            resultsSection.style.display = 'none';
+            resetUploadButton();
+        }
+
+        function resetUploadButton() {
+            processBtn.disabled = false;
+            processBtn.innerHTML = '<i class="fas fa-magic"></i> Process Video';
+        }
+
+        function startProgressTracking() {
+            progressInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/status/${currentJobId}`);
+                    const job = await response.json();
+                    
+                    if (job.error) {
+                        clearInterval(progressInterval);
+                        showError(job.error);
+                        resetToUpload();
+                        return;
+                    }
+                    
+                    updateProgress(job);
+                    
+                    if (job.status === 'completed') {
+                        clearInterval(progressInterval);
+                        displayResults(job);
+                    } else if (job.status === 'failed') {
+                        clearInterval(progressInterval);
+                        showError(job.error || 'Processing failed');
+                        resetToUpload();
+                    }
+                    
+                } catch (error) {
+                    console.error('Status check error:', error);
+                }
+            }, 2000);
+        }
+
+        function updateProgress(job) {
+            progressFill.style.width = `${job.progress}%`;
+            progressText.textContent = job.message;
+            progressDetails.textContent = `Status: ${job.status} | Progress: ${job.progress}%`;
+        }
+
+        function displayResults(job) {
+            showResults();
+            
+            clipsGrid.innerHTML = '';
+            
+            job.clips.forEach(clip => {
+                const clipCard = createClipCard(clip);
+                clipsGrid.appendChild(clipCard);
+            });
+        }
+
+        function createClipCard(clip) {
+            const card = document.createElement('div');
+            card.className = 'clip-card';
+            
+            const duration = Math.round(clip.duration);
+            const startTime = formatTime(clip.start_time);
+            const endTime = formatTime(clip.end_time);
+            
+            card.innerHTML = `
+                <div class="clip-header">
+                    <div class="clip-number">Clip ${clip.id}</div>
+                    <div class="clip-duration">${duration}s (${startTime} - ${endTime})</div>
+                </div>
+                <div class="clip-reason">${clip.reason}</div>
+                <div class="clip-actions">
+                    <button class="btn btn-outline btn-sm" onclick="previewClip(${clip.id})">
+                        <i class="fas fa-play"></i> Preview
+                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="downloadClip(${clip.id})">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                </div>
+            `;
+            
+            return card;
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function previewClip(clipId) {
+            const url = `/preview/${currentJobId}/${clipId}`;
+            window.open(url, '_blank');
+        }
+
+        function downloadClip(clipId) {
+            const url = `/download/${currentJobId}/${clipId}`;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `clip_${clipId}.mp4`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            successMessage.style.display = 'none';
+        }
+
+        function showSuccess(message) {
+            successMessage.textContent = message;
+            successMessage.style.display = 'block';
+            errorMessage.style.display = 'none';
+        }
+
+        function hideMessages() {
+            errorMessage.style.display = 'none';
+            successMessage.style.display = 'none';
+        }
+
+        // Add new job button to results
+        function addNewJobButton() {
+            const button = document.createElement('button');
+            button.className = 'btn btn-outline';
+            button.innerHTML = '<i class="fas fa-plus"></i> Process Another Video';
+            button.onclick = () => {
+                resetToUpload();
+                // Reset form
+                videoInput.value = '';
+                promptInput.value = '';
+                numClipsInput.value = '5';
+                // Reset upload display
+                const uploadText = uploadZone.querySelector('.upload-text');
+                const uploadIcon = uploadZone.querySelector('.upload-icon i');
+                uploadText.textContent = 'Drop your video here or click to browse';
+                uploadIcon.className = 'fas fa-cloud-upload-alt';
+                uploadZone.style.borderColor = '#667eea';
+                uploadZone.style.background = '#f8f9ff';
+            };
+            
+            const resultsHeader = document.querySelector('.results-header');
+            resultsHeader.appendChild(button);
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            addNewJobButton();
+        });
+    </script>
+</body>
+</html>

@@ -1,12 +1,21 @@
+# ZipClip Configuration
+
 whisper:
-  model: large # tiny, base, small, medium, large
+  model: base # tiny, base, small, medium, large
 
-number_of_clips: 20
-target_duration: 35
+# LLM Configuration
+# Option 1: OpenAI API (requires API key)
+openai_api_key: ""
+llm_model: "gpt-3.5-turbo" # or "gpt-4" for better analysis
 
-channels:
-  # family_guy:
-  #   path: https://www.youtube.com/watch?v=6DmXlJwaP0I
-  outdoor_boys:
-    path: https://www.youtube.com/watch?v=uSuEdw6HAFE
+# Option 2: Local LLM via Ollama (privacy-focused, no API costs)
+local_llm:
+  enabled: false  # Set to true to use local LLM instead of OpenAI
+  model: "llama3.2"  # Popular options: llama3.2, llama3.1, mistral, codellama
+                     # Run "ollama list" to see available models
+                     # Run "ollama pull <model>" to download a model
+
+# Default settings
+default_num_clips: 5
+default_output_dir: "output"
   
