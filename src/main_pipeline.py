@@ -200,10 +200,13 @@ class ClipAnalyzer:
 
 User wants: {prompt}
 
-Instructions:
-- Each clip should be 15-60 seconds long
-- Respond with ONLY valid JSON, no other text
-- Use this exact format:
+CRITICAL REQUIREMENTS:
+- Each clip MUST be between 15-60 seconds long (minimum 15 seconds!)
+- Look for complete conversations or dialogue exchanges
+- Find timestamps that span enough content for engaging clips
+- Do NOT create clips shorter than 15 seconds
+
+Respond with ONLY valid JSON, no other text:
 
 {{
   "clips": [
@@ -214,6 +217,8 @@ Instructions:
     }}
   ]
 }}
+
+IMPORTANT: Check that end_time - start_time is at least 15.0 seconds for every clip!
 
 Transcript:
 {transcript_text}"""
@@ -291,19 +296,44 @@ Transcript:
                 logger.error(f"JSON result: {result}")
                 raise ValueError("LLM returned no clips")
             
-            # Validate clip format
+            # Validate clip format and duration
+            valid_clips = []
             for i, clip in enumerate(clips):
                 logger.info(f"Validating clip {i+1}: {clip}")
+                
+                # Check time format
                 if not isinstance(clip.get('start_time'), (int, float)) or not isinstance(clip.get('end_time'), (int, float)):
-                    raise ValueError(f"Clip {i+1} has invalid time format: {clip}")
-                if clip['start_time'] >= clip['end_time']:
-                    raise ValueError(f"Clip {i+1} has invalid time range: {clip['start_time']}-{clip['end_time']}")
+                    logger.error(f"Clip {i+1} has invalid time format: {clip}")
+                    continue
+                
+                start_time = float(clip['start_time'])
+                end_time = float(clip['end_time'])
+                duration = end_time - start_time
+                
+                # Check time range validity
+                if start_time >= end_time:
+                    logger.error(f"Clip {i+1} has invalid time range: {start_time}-{end_time}")
+                    continue
+                
+                # Check minimum duration
+                if duration < 5.0:  # More lenient here since we'll extend in ClipExtractor
+                    logger.warning(f"Clip {i+1} is very short ({duration:.1f}s). Will be extended during extraction.")
+                
+                # Update clip with cleaned values
+                clip['start_time'] = start_time
+                clip['end_time'] = end_time
+                valid_clips.append(clip)
             
-            logger.info(f"✅ Local LLM successfully identified {len(clips)} interesting moments")
-            for i, clip in enumerate(clips):
-                logger.info(f"  Clip {i+1}: {clip['start_time']}s-{clip['end_time']}s | {clip['reason']}")
+            if not valid_clips:
+                logger.error("No valid clips found after validation")
+                raise ValueError("LLM returned no valid clips")
             
-            return clips
+            logger.info(f"✅ Local LLM successfully identified {len(valid_clips)} valid clips")
+            for i, clip in enumerate(valid_clips):
+                duration = clip['end_time'] - clip['start_time']
+                logger.info(f"  Clip {i+1}: {clip['start_time']}s-{clip['end_time']}s (duration: {duration:.1f}s) | {clip['reason']}")
+            
+            return valid_clips
             
         except json.JSONDecodeError as e:
             logger.error(f"JSON parsing error: {e}")
@@ -323,10 +353,13 @@ Transcript:
 
 User wants: {prompt}
 
-Instructions:
-- Each clip should be 15-60 seconds long
-- Respond with ONLY valid JSON, no other text
-- Use this exact format:
+CRITICAL REQUIREMENTS:
+- Each clip MUST be between 15-60 seconds long (minimum 15 seconds!)
+- Look for complete conversations or dialogue exchanges
+- Find timestamps that span enough content for engaging clips
+- Do NOT create clips shorter than 15 seconds
+
+Respond with ONLY valid JSON, no other text:
 
 {{
   "clips": [
@@ -337,6 +370,8 @@ Instructions:
     }}
   ]
 }}
+
+IMPORTANT: Check that end_time - start_time is at least 15.0 seconds for every clip!
 
 Transcript:
 {transcript_text}"""
@@ -381,15 +416,42 @@ Transcript:
             if not clips:
                 raise ValueError("OpenAI returned no clips")
             
-            # Validate clip format
+            # Validate clip format and duration
+            valid_clips = []
             for i, clip in enumerate(clips):
+                # Check time format
                 if not isinstance(clip.get('start_time'), (int, float)) or not isinstance(clip.get('end_time'), (int, float)):
-                    raise ValueError(f"Clip {i+1} has invalid time format")
-                if clip['start_time'] >= clip['end_time']:
-                    raise ValueError(f"Clip {i+1} has invalid time range: {clip['start_time']}-{clip['end_time']}")
+                    logger.error(f"Clip {i+1} has invalid time format: {clip}")
+                    continue
+                
+                start_time = float(clip['start_time'])
+                end_time = float(clip['end_time'])
+                duration = end_time - start_time
+                
+                # Check time range validity
+                if start_time >= end_time:
+                    logger.error(f"Clip {i+1} has invalid time range: {start_time}-{end_time}")
+                    continue
+                
+                # Check minimum duration
+                if duration < 5.0:  # More lenient here since we'll extend in ClipExtractor
+                    logger.warning(f"Clip {i+1} is very short ({duration:.1f}s). Will be extended during extraction.")
+                
+                # Update clip with cleaned values
+                clip['start_time'] = start_time
+                clip['end_time'] = end_time
+                valid_clips.append(clip)
             
-            logger.info(f"✅ OpenAI successfully identified {len(clips)} interesting moments")
-            return clips
+            if not valid_clips:
+                logger.error("No valid clips found after validation")
+                raise ValueError("OpenAI returned no valid clips")
+            
+            logger.info(f"✅ OpenAI successfully identified {len(valid_clips)} valid clips")
+            for i, clip in enumerate(valid_clips):
+                duration = clip['end_time'] - clip['start_time']
+                logger.info(f"  Clip {i+1}: {clip['start_time']}s-{clip['end_time']}s (duration: {duration:.1f}s) | {clip['reason']}")
+            
+            return valid_clips
             
         except json.JSONDecodeError as e:
             logger.error(f"JSON parsing error: {e}")
@@ -441,8 +503,45 @@ class ClipExtractor:
                 start_time = max(0, start_time)
                 end_time = min(video.duration, end_time)
                 
+                # Calculate initial duration
+                duration = end_time - start_time
+                
+                # CRITICAL FIX: Ensure clip is at least 15 seconds long
+                min_duration = 15.0
+                if duration < min_duration:
+                    logger.warning(f"Clip {i+1} is too short ({duration:.1f}s). Extending to {min_duration}s minimum.")
+                    
+                    # Try to extend the clip symmetrically around the original timespan
+                    needed_extension = min_duration - duration
+                    half_extension = needed_extension / 2
+                    
+                    new_start = start_time - half_extension
+                    new_end = end_time + half_extension
+                    
+                    # Ensure we don't go beyond video boundaries
+                    if new_start < 0:
+                        # If we can't extend backward, extend more forward
+                        new_start = 0
+                        new_end = min(video.duration, start_time + min_duration)
+                    elif new_end > video.duration:
+                        # If we can't extend forward, extend more backward
+                        new_end = video.duration
+                        new_start = max(0, video.duration - min_duration)
+                    
+                    # Update times
+                    start_time = new_start
+                    end_time = new_end
+                    duration = end_time - start_time
+                    
+                    logger.info(f"Extended clip {i+1} to {start_time:.1f}s-{end_time:.1f}s (duration: {duration:.1f}s)")
+                
                 if end_time <= start_time:
                     logger.warning(f"Invalid clip times: {start_time}-{end_time}. Skipping.")
+                    continue
+                
+                # Final duration check
+                if duration < 1.0:
+                    logger.warning(f"Clip {i+1} is still too short ({duration:.1f}s) even after extension. Skipping.")
                     continue
                 
                 # Create clip directory
@@ -536,41 +635,63 @@ class VideoCaptioner:
             for segment in result["segments"]:
                 text = segment["text"].strip()
                 if text:
-                    txt_clip = (TextClip(text,
-                                        fontsize=50,
-                                        color='white',
-                                        font='Arial-Bold',
-                                        stroke_color='black',
-                                        stroke_width=2,
-                                        size=(int(video.w * 0.8), None),
-                                        method='caption',
-                                        align='center')
-                                .set_position(('center', int(video.h * 0.75)))
-                                .set_start(segment["start"])
-                                .set_end(segment["end"]))
-                    
-                    subtitle_clips.append(txt_clip)
+                    try:
+                        # Create text clip with correct MoviePy parameters
+                        txt_clip = (TextClip(text,
+                                            font_size=40,     # Changed from fontsize
+                                            color='white',
+                                            stroke_color='black',
+                                            stroke_width=2,
+                                            size=(int(video.w * 0.8), None))
+                                    .set_position(('center', int(video.h * 0.8)))
+                                    .set_start(segment["start"])
+                                    .set_end(segment["end"]))
+                        
+                        subtitle_clips.append(txt_clip)
+                        
+                    except Exception as e:
+                        logger.warning(f"Failed to create subtitle for segment: {text[:50]}... Error: {e}")
+                        continue
             
             # Combine video with subtitles
             if subtitle_clips:
-                final_video = CompositeVideoClip([video] + subtitle_clips)
-                final_video.write_videofile(
-                    output_path,
-                    codec='libx264',
+                try:
+                    final_video = CompositeVideoClip([video] + subtitle_clips)
+                    final_video.write_videofile(
+                        output_path,
+                        codec='libx264',
+                        audio_codec='aac',
+                        temp_audiofile='temp-audio.m4a',
+                        remove_temp=True,
+                        fps=video.fps,
+                        logger=None
+                    )
+                    final_video.close()
+                    logger.info(f"Captioned video saved: {output_path}")
+                    video.close()
+                    return True
+                except Exception as e:
+                    logger.error(f"Error creating composite video with captions: {e}")
+                    logger.info("Falling back to video without captions...")
+                    # Fall through to copy original video
+            
+            # No subtitles or captioning failed - copy original video
+            try:
+                video.write_videofile(
+                    output_path, 
+                    codec='libx264', 
                     audio_codec='aac',
                     temp_audiofile='temp-audio.m4a',
                     remove_temp=True,
-                    fps=video.fps,
                     logger=None
                 )
-                final_video.close()
-            else:
-                # No subtitles, just copy video
-                video.write_videofile(output_path, codec='libx264', audio_codec='aac', logger=None)
-            
-            video.close()
-            logger.info(f"Captioned video saved: {output_path}")
-            return True
+                logger.info(f"Video saved without captions: {output_path}")
+                video.close()
+                return True
+            except Exception as e:
+                logger.error(f"Error saving video: {e}")
+                video.close()
+                return False
             
         except Exception as e:
             logger.error(f"Error adding captions: {e}")
