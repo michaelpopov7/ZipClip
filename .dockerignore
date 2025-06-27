@@ -50,8 +50,13 @@ Thumbs.db
 
 # Docker
 Dockerfile
-docker-compose.yml
+docker compose.yml
 .dockerignore
+
+output/
+output/*
+
+
 
 # Logs
 *.log
@@ -71,6 +76,7 @@ output/
 *.mkv
 *.webm
 *.m4v
+uploads/*
 
 # Environment variables
 .env

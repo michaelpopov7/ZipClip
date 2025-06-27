@@ -1,0 +1,27 @@
+{
+  "prompt": "funny moments, complete conversations",
+  "num_clips_requested": 2,
+  "clips_identified": 4,
+  "clips": [
+    {
+      "start_time": 0.0,
+      "end_time": 30.0,
+      "reason": "Jesus' birthday party is gonna be epic."
+    },
+    {
+      "start_time": 1.13,
+      "end_time": 2.15,
+      "reason": "I'm sure Jesus doesn't want some gross quickie"
+    },
+    {
+      "start_time": 3.38,
+      "end_time": 4.4,
+      "reason": "You're making this whole thing crude."
+    },
+    {
+      "start_time": 5.05,
+      "end_time": 6.1,
+      "reason": "What's happening here?"
+    }
+  ]
+}

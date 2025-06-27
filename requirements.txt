@@ -1,6 +1,12 @@
 openai-whisper>=20231117
 openai>=1.0.0
 moviepy>=1.0.3
+imageio>=2.4.1
+imageio-ffmpeg>=0.4.8
+decorator>=4.4.2
+proglog>=0.1.10
+requests>=2.25.1
+tqdm>=4.64.0
 PyYAML>=6.0
 numpy>=1.19.0
 ollama>=0.1.0  # For local LLM support

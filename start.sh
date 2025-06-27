@@ -48,7 +48,7 @@ show_help() {
 
 start_basic() {
     echo -e "${GREEN}🚀 Starting ZipClip (web interface only)...${NC}"
-    docker-compose up -d zipclip
+    docker compose up -d zipclip
     echo ""
     echo -e "${GREEN}✅ ZipClip is running!${NC}"
     echo -e "${BLUE}🌐 Web interface: http://localhost:5000${NC}"
@@ -58,7 +58,7 @@ start_basic() {
 
 start_full() {
     echo -e "${GREEN}🚀 Starting ZipClip with local LLM support...${NC}"
-    docker-compose up -d
+    docker compose up -d
     echo ""
     echo -e "${GREEN}✅ ZipClip is running with Ollama!${NC}"
     echo -e "${BLUE}🌐 Web interface: http://localhost:5000${NC}"
@@ -72,24 +72,24 @@ start_full() {
 
 stop_services() {
     echo -e "${YELLOW}🛑 Stopping ZipClip...${NC}"
-    docker-compose down
+    docker compose down
     echo -e "${GREEN}✅ ZipClip stopped${NC}"
 }
 
 show_logs() {
     echo -e "${BLUE}📜 Showing ZipClip logs...${NC}"
-    docker-compose logs -f zipclip
+    docker compose logs -f zipclip
 }
 
 build_image() {
     echo -e "${BLUE}🔨 Building ZipClip Docker image...${NC}"
-    docker-compose build --no-cache
+    docker compose build --no-cache
     echo -e "${GREEN}✅ Build complete${NC}"
 }
 
 clean_up() {
     echo -e "${YELLOW}🧹 Cleaning up Docker resources...${NC}"
-    docker-compose down -v --rmi all --remove-orphans
+    docker compose down -v --rmi all --remove-orphans
     docker system prune -f
     echo -e "${GREEN}✅ Cleanup complete${NC}"
 }
@@ -109,11 +109,11 @@ manage_ollama() {
                 exit 1
             fi
             echo -e "${BLUE}📥 Downloading model: $3${NC}"
-            docker-compose exec ollama ollama pull "$3"
+            docker compose exec ollama ollama pull "$3"
             ;;
         "list")
             echo -e "${BLUE}📋 Available models:${NC}"
-            docker-compose exec ollama ollama list
+            docker compose exec ollama ollama list
             ;;
         "rm")
             if [ -z "$3" ]; then
@@ -121,7 +121,7 @@ manage_ollama() {
                 exit 1
             fi
             echo -e "${YELLOW}🗑️  Removing model: $3${NC}"
-            docker-compose exec ollama ollama rm "$3"
+            docker compose exec ollama ollama rm "$3"
             ;;
         *)
             echo -e "${GREEN}Ollama Management Commands:${NC}"

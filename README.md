@@ -220,7 +220,7 @@ output/
 ```bash
 # Check Docker status
 docker --version
-docker-compose --version
+docker compose --version
 
 # View logs
 ./start.sh logs
@@ -232,7 +232,7 @@ docker-compose --version
 ### Local LLM Issues
 ```bash
 # Check Ollama status
-docker-compose exec ollama ollama list
+docker compose exec ollama ollama list
 
 # Pull a model if none available
 ./start.sh ollama pull llama3.2

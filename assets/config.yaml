@@ -10,7 +10,7 @@ llm_model: "gpt-3.5-turbo" # or "gpt-4" for better analysis
 
 # Option 2: Local LLM via Ollama (privacy-focused, no API costs)
 local_llm:
-  enabled: false  # Set to true to use local LLM instead of OpenAI
+  enabled: true  # Set to true to use local LLM instead of OpenAI
   model: "llama3.2"  # Popular options: llama3.2, llama3.1, mistral, codellama
                      # Run "ollama list" to see available models
                      # Run "ollama pull <model>" to download a model

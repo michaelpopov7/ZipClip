@@ -20,7 +20,15 @@ import json
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
 import whisper
-from moviepy.editor import VideoFileClip
+
+try:
+    from moviepy import VideoFileClip
+    MOVIEPY_AVAILABLE = True
+except ImportError:
+    MOVIEPY_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("MoviePy not available. Video processing features will be limited.")
+
 from openai import OpenAI
 
 try:
@@ -81,7 +89,7 @@ class TranscriptExtractor:
 class ClipAnalyzer:
     """Uses LLM to analyze transcript and identify interesting clip timestamps"""
     
-    def __init__(self, api_key=None, model="gpt-3.5-turbo", use_local_llm=False, local_model="llama3.2"):
+    def __init__(self, api_key=None, model="gpt-3.5-turbo", use_local_llm=True, local_model="llama3.2"):
         self.model = model
         self.use_local_llm = use_local_llm
         self.local_model = local_model
@@ -100,9 +108,10 @@ class ClipAnalyzer:
                 self.llm_type = "openai"
                 logger.info(f"Using OpenAI: {model}")
             except Exception:
-                logger.warning("No OpenAI API key provided and local LLM not configured. Using fallback analysis.")
-                self.client = None
-                self.llm_type = "fallback"
+                # Force local LLM as default instead of fallback
+                logger.warning("No OpenAI API key provided. Forcing local LLM usage.")
+                self.llm_type = "local"
+                self.use_local_llm = True
     
     def analyze_transcript(self, transcript_result: Dict, prompt: str, num_clips: int = 5) -> List[Dict]:
         """
@@ -120,7 +129,7 @@ class ClipAnalyzer:
         
         if not transcript_result or 'segments' not in transcript_result:
             logger.error("Invalid transcript result")
-            return []
+            raise ValueError("Invalid transcript result - cannot proceed without transcript")
         
         # Create full transcript text with timestamps for LLM analysis
         transcript_text = self._format_transcript_for_llm(transcript_result['segments'])
@@ -130,18 +139,33 @@ class ClipAnalyzer:
         elif self.llm_type == "openai" and self.client:
             return self._analyze_with_openai(transcript_text, prompt, num_clips)
         else:
-            return self._analyze_fallback(transcript_result['segments'], num_clips)
+            raise ValueError("No LLM available for analysis - please configure Ollama or OpenAI")
     
     def _format_transcript_for_llm(self, segments: List[Dict]) -> str:
         """Format transcript segments for LLM analysis"""
+        logger.info(f"=== TRANSCRIPT FORMATTING DEBUG ===")
+        logger.info(f"Number of transcript segments: {len(segments)}")
+        
         formatted_lines = []
-        for segment in segments:
+        for i, segment in enumerate(segments):
             start_time = self._format_time(segment['start'])
             end_time = self._format_time(segment['end'])
             text = segment['text'].strip()
-            formatted_lines.append(f"[{start_time} - {end_time}] {text}")
+            formatted_line = f"[{start_time} - {end_time}] {text}"
+            formatted_lines.append(formatted_line)
+            
+            # Log first few and last few segments for debugging
+            if i < 3 or i >= len(segments) - 3:
+                logger.info(f"  Segment {i+1}: {formatted_line}")
+            elif i == 3 and len(segments) > 6:
+                logger.info(f"  ... ({len(segments) - 6} more segments) ...")
         
-        return "\n".join(formatted_lines)
+        full_transcript = "\n".join(formatted_lines)
+        logger.info(f"Complete transcript length: {len(full_transcript)} characters")
+        logger.info(f"Total lines in transcript: {len(formatted_lines)}")
+        logger.info(f"Transcript is sent as ONE COMPLETE TEXT, not in parts")
+        
+        return full_transcript
     
     def _format_time(self, seconds: float) -> str:
         """Format seconds to MM:SS format"""
@@ -151,25 +175,42 @@ class ClipAnalyzer:
     
     def _analyze_with_local_llm(self, transcript_text: str, prompt: str, num_clips: int) -> List[Dict]:
         """Use local LLM via Ollama to analyze transcript"""
+        if not OLLAMA_AVAILABLE:
+            raise ValueError("Ollama is not available - please install ollama package")
+        
         try:
-            system_prompt = f"""You are an expert video editor tasked with identifying the most interesting moments in a video transcript for creating short clips.
+            logger.info(f"=== TRANSCRIPT ANALYSIS DEBUG ===")
+            logger.info(f"Transcript length: {len(transcript_text)} characters")
+            logger.info(f"User prompt: '{prompt}'")
+            logger.info(f"Requested clips: {num_clips}")
+            logger.info(f"Transcript preview (first 500 chars): {transcript_text[:500]}...")
+            logger.info(f"Transcript sample (last 500 chars): ...{transcript_text[-500:]}")
+            
+            # Check if transcript is too long (Ollama/LLM token limits)
+            max_transcript_chars = 50000  # Conservative limit
+            if len(transcript_text) > max_transcript_chars:
+                logger.warning(f"Transcript is very long ({len(transcript_text)} chars). Truncating to {max_transcript_chars} chars to avoid LLM issues.")
+                # Take first and last parts to preserve context
+                half_limit = max_transcript_chars // 2
+                truncated_transcript = transcript_text[:half_limit] + "\n\n[... MIDDLE CONTENT TRUNCATED ...]\n\n" + transcript_text[-half_limit:]
+                transcript_text = truncated_transcript
+                logger.info(f"Truncated transcript length: {len(transcript_text)} characters")
+            
+            system_prompt = f"""Find {num_clips} interesting moments from this video transcript for creating short clips.
 
-Based on the user's criteria: "{prompt}"
+User wants: {prompt}
 
-Analyze the following transcript and identify {num_clips} interesting moments that would make engaging short clips.
+Instructions:
+- Each clip should be 15-60 seconds long
+- Respond with ONLY valid JSON, no other text
+- Use this exact format:
 
-For each moment, provide:
-1. Start time (in seconds)
-2. End time (in seconds) - clips should be 15-60 seconds long
-3. Brief reason why this moment is interesting
-
-Respond in valid JSON format:
 {{
   "clips": [
     {{
-      "start_time": 120.5,
-      "end_time": 180.0,
-      "reason": "Explanation of why this moment is interesting"
+      "start_time": 0.0,
+      "end_time": 30.0,
+      "reason": "brief description"
     }}
   ]
 }}
@@ -177,67 +218,122 @@ Respond in valid JSON format:
 Transcript:
 {transcript_text}"""
 
-            response = ollama.chat(
+            logger.info(f"System prompt length: {len(system_prompt)} characters")
+            logger.info(f"System prompt preview: {system_prompt[:200]}...")
+
+            # Configure ollama client to connect to the correct hostname
+            import ollama
+            client = ollama.Client(host='http://ollama:11434')
+            
+            logger.info("Sending transcript to local LLM for analysis...")
+            logger.info(f"Using model: {self.local_model}")
+            
+            response = client.chat(
                 model=self.local_model,
                 messages=[
-                    {"role": "system", "content": system_prompt}
+                    {"role": "user", "content": system_prompt}  # Using user role instead of system for better compatibility
                 ],
+                stream=False,  # CRITICAL FIX: Disable streaming to get complete response
                 options={
                     "temperature": 0.3,
                     "top_p": 0.9
                 }
             )
             
-            # Parse JSON response
-            response_text = response['message']['content'].strip()
+            logger.info(f"Raw response object type: {type(response)}")
+            logger.info(f"Response attributes: {[attr for attr in dir(response) if not attr.startswith('_')]}")
+            
+            # Parse JSON response - handle new response structure
+            response_content = response.message.content if hasattr(response, 'message') and hasattr(response.message, 'content') else ""
+            
+            logger.info(f"Response message content type: {type(response_content)}")
+            logger.info(f"Response content length: {len(response_content) if response_content else 0}")
+            logger.info(f"Full raw response content: '{response_content}'")
+            
+            if not response_content or not response_content.strip():
+                logger.error(f"Empty response detected!")
+                logger.error(f"Response object: {response}")
+                if hasattr(response, 'message'):
+                    logger.error(f"Message object: {response.message}")
+                raise ValueError("Empty response from local LLM")
+            
+            response_text = response_content.strip()
+            logger.info(f"Raw LLM response length: {len(response_text)} characters")
+            logger.info(f"Raw response (first 1000 chars): {response_text[:1000]}")
             
             # Clean up response if it has markdown formatting
             if response_text.startswith("```json"):
                 response_text = response_text.replace("```json", "").replace("```", "").strip()
+                logger.info("Removed ```json markdown formatting")
+            elif response_text.startswith("```"):
+                # Handle case where it's just ```
+                lines = response_text.split('\n')
+                if len(lines) > 2 and lines[0] == "```" and lines[-1] == "```":
+                    response_text = '\n'.join(lines[1:-1]).strip()
+                    logger.info("Removed ``` markdown formatting")
+            
+            # Look for JSON content between any surrounding text
+            if '{' in response_text and '}' in response_text:
+                start_idx = response_text.find('{')
+                end_idx = response_text.rfind('}') + 1
+                original_text = response_text
+                response_text = response_text[start_idx:end_idx]
+                logger.info(f"Extracted JSON from position {start_idx} to {end_idx}")
+                logger.info(f"Original text: {original_text}")
+            
+            logger.info(f"Final cleaned response: {response_text}")
             
             result = json.loads(response_text)
             clips = result.get("clips", [])
             
-            logger.info(f"Local LLM identified {len(clips)} interesting moments")
+            if not clips:
+                logger.error("LLM returned valid JSON but no clips array")
+                logger.error(f"JSON result: {result}")
+                raise ValueError("LLM returned no clips")
+            
+            # Validate clip format
+            for i, clip in enumerate(clips):
+                logger.info(f"Validating clip {i+1}: {clip}")
+                if not isinstance(clip.get('start_time'), (int, float)) or not isinstance(clip.get('end_time'), (int, float)):
+                    raise ValueError(f"Clip {i+1} has invalid time format: {clip}")
+                if clip['start_time'] >= clip['end_time']:
+                    raise ValueError(f"Clip {i+1} has invalid time range: {clip['start_time']}-{clip['end_time']}")
+            
+            logger.info(f"✅ Local LLM successfully identified {len(clips)} interesting moments")
+            for i, clip in enumerate(clips):
+                logger.info(f"  Clip {i+1}: {clip['start_time']}s-{clip['end_time']}s | {clip['reason']}")
+            
             return clips
             
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parsing error: {e}")
+            logger.error(f"Response text that failed to parse: {response_text}")
+            raise ValueError(f"Local LLM returned invalid JSON: {e}")
         except Exception as e:
             logger.error(f"Error analyzing with local LLM: {e}")
-            logger.info("Falling back to simple analysis")
-            # Pass segments instead of transcript_text for fallback
-            segments = transcript_text.split('\n')
-            segment_dicts = []
-            for line in segments:
-                if line.strip() and '] ' in line:
-                    try:
-                        time_part = line.split('] ')[0][1:]  # Remove [ and get time part
-                        start_time = float(time_part.split(' - ')[0].replace(':', '')) * 60  # Simple conversion
-                        segment_dicts.append({'start': start_time, 'end': start_time + 30})
-                    except:
-                        continue
-            return self._analyze_fallback(segment_dicts, num_clips)
+            logger.error(f"Exception type: {type(e)}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            raise ValueError(f"Local LLM analysis failed: {e}")
 
     def _analyze_with_openai(self, transcript_text: str, prompt: str, num_clips: int) -> List[Dict]:
         """Use OpenAI API to analyze transcript"""
         try:
-            system_prompt = f"""You are an expert video editor tasked with identifying the most interesting moments in a video transcript for creating short clips.
+            system_prompt = f"""Find {num_clips} interesting moments from this video transcript for creating short clips.
 
-Based on the user's criteria: "{prompt}"
+User wants: {prompt}
 
-Analyze the following transcript and identify {num_clips} interesting moments that would make engaging short clips.
+Instructions:
+- Each clip should be 15-60 seconds long
+- Respond with ONLY valid JSON, no other text
+- Use this exact format:
 
-For each moment, provide:
-1. Start time (in seconds)
-2. End time (in seconds) - clips should be 15-60 seconds long
-3. Brief reason why this moment is interesting
-
-Respond in valid JSON format:
 {{
   "clips": [
     {{
-      "start_time": 120.5,
-      "end_time": 180.0,
-      "reason": "Explanation of why this moment is interesting"
+      "start_time": 0.0,
+      "end_time": 30.0,
+      "reason": "brief description"
     }}
   ]
 }}
@@ -245,6 +341,7 @@ Respond in valid JSON format:
 Transcript:
 {transcript_text}"""
 
+            logger.info("Sending transcript to OpenAI for analysis...")
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -254,57 +351,53 @@ Transcript:
             )
             
             # Parse JSON response
-            response_text = response.choices[0].message.content.strip()
+            response_text = response.choices[0].message.content
+            
+            if not response_text or not response_text.strip():
+                raise ValueError("Empty response from OpenAI")
+            
+            response_text = response_text.strip()
+            logger.info(f"Raw OpenAI response length: {len(response_text)} characters")
             
             # Clean up response if it has markdown formatting
             if response_text.startswith("```json"):
                 response_text = response_text.replace("```json", "").replace("```", "").strip()
+            elif response_text.startswith("```"):
+                lines = response_text.split('\n')
+                if len(lines) > 2 and lines[0] == "```" and lines[-1] == "```":
+                    response_text = '\n'.join(lines[1:-1]).strip()
+            
+            # Look for JSON content between any surrounding text
+            if '{' in response_text and '}' in response_text:
+                start_idx = response_text.find('{')
+                end_idx = response_text.rfind('}') + 1
+                response_text = response_text[start_idx:end_idx]
+            
+            logger.info(f"Cleaned response: {response_text[:200]}...")
             
             result = json.loads(response_text)
             clips = result.get("clips", [])
             
-            logger.info(f"OpenAI LLM identified {len(clips)} interesting moments")
+            if not clips:
+                raise ValueError("OpenAI returned no clips")
+            
+            # Validate clip format
+            for i, clip in enumerate(clips):
+                if not isinstance(clip.get('start_time'), (int, float)) or not isinstance(clip.get('end_time'), (int, float)):
+                    raise ValueError(f"Clip {i+1} has invalid time format")
+                if clip['start_time'] >= clip['end_time']:
+                    raise ValueError(f"Clip {i+1} has invalid time range: {clip['start_time']}-{clip['end_time']}")
+            
+            logger.info(f"✅ OpenAI successfully identified {len(clips)} interesting moments")
             return clips
             
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parsing error: {e}")
+            logger.error(f"Response text: {response_text}")
+            raise ValueError(f"OpenAI returned invalid JSON: {e}")
         except Exception as e:
             logger.error(f"Error analyzing with OpenAI: {e}")
-            logger.info("Falling back to simple analysis")
-            # Pass segments instead of transcript_text for fallback
-            segments = transcript_text.split('\n')
-            segment_dicts = []
-            for line in segments:
-                if line.strip() and '] ' in line:
-                    try:
-                        time_part = line.split('] ')[0][1:]  # Remove [ and get time part
-                        start_time = float(time_part.split(' - ')[0].replace(':', '')) * 60  # Simple conversion
-                        segment_dicts.append({'start': start_time, 'end': start_time + 30})
-                    except:
-                        continue
-            return self._analyze_fallback(segment_dicts, num_clips)
-    
-    def _analyze_fallback(self, segments: List[Dict], num_clips: int) -> List[Dict]:
-        """Fallback analysis when LLM is not available"""
-        logger.info("Using fallback analysis (evenly spaced clips)")
-        
-        if not segments:
-            return []
-        
-        total_duration = segments[-1]['end'] if segments else 0
-        clip_duration = min(45, total_duration / num_clips * 0.8)  # 45 sec max, leave gaps
-        
-        clips = []
-        for i in range(num_clips):
-            start_pos = i * (total_duration / num_clips)
-            start_time = start_pos
-            end_time = min(total_duration, start_time + clip_duration)
-            
-            clips.append({
-                "start_time": start_time,
-                "end_time": end_time,
-                "reason": f"Evenly spaced clip {i+1}"
-            })
-        
-        return clips
+            raise ValueError(f"OpenAI analysis failed: {e}")
 
 
 class ClipExtractor:
@@ -323,6 +416,10 @@ class ClipExtractor:
             List of paths to extracted clip files
         """
         logger.info(f"Extracting {len(clip_info_list)} clips from {video_path}")
+        
+        if not MOVIEPY_AVAILABLE:
+            logger.error("MoviePy is not available. Cannot extract video clips.")
+            return []
         
         if not os.path.exists(video_path):
             logger.error(f"Video file not found: {video_path}")
@@ -356,7 +453,7 @@ class ClipExtractor:
                 clip_path = os.path.join(clip_dir, "clip.mp4")
                 
                 try:
-                    clip = video.subclip(start_time, end_time)
+                    clip = video.subclipped(start_time, end_time)
                     clip.write_videofile(
                         clip_path,
                         codec="libx264",
@@ -420,8 +517,12 @@ class VideoCaptioner:
         """
         logger.info(f"Adding captions to: {os.path.basename(video_path)}")
         
+        if not MOVIEPY_AVAILABLE:
+            logger.error("MoviePy is not available. Cannot add captions to video.")
+            return False
+        
         try:
-            from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+            from moviepy import VideoFileClip, TextClip, CompositeVideoClip
             
             # Load video
             video = VideoFileClip(video_path)
